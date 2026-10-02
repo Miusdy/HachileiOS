@@ -62,8 +62,15 @@ void
 fsinit(int dev)
 {
   readsb(dev, &sb);
-  if (sb.magic != FSMAGIC)
-    panic("invalid file system");
+  if (sb.magic != FSMAGIC) {
+    // Two different problems, two different fixes, so the message has
+    // to distinguish them: an image built before the inode gained
+    // mode/uid/gid would otherwise be read with the new offsets and
+    // silently return nonsense.
+    if (sb.magic == FSMAGIC_OLD)
+      panic("fsinit: fs.img uses the old inode format; re-run mkfs");
+    panic("fsinit: not a miniOS file system");
+  }
   initlog(dev, &sb);
   ireclaim(dev);
   // Must come after ireclaim(): reclaiming an orphan inode goes through
@@ -334,6 +341,9 @@ iupdate(struct inode *ip)
   bp = bread(ip->dev, IBLOCK(ip->inum, sb));
   dip = (struct dinode *)bp->data + ip->inum % IPB;
   dip->type = ip->type;
+  dip->mode = ip->mode;
+  dip->uid = ip->uid;
+  dip->gid = ip->gid;
   dip->major = ip->major;
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
@@ -407,6 +417,9 @@ ilock(struct inode *ip)
     bp = bread(ip->dev, IBLOCK(ip->inum, sb));
     dip = (struct dinode *)bp->data + ip->inum % IPB;
     ip->type = dip->type;
+    ip->mode = dip->mode;
+    ip->uid = dip->uid;
+    ip->gid = dip->gid;
     ip->major = dip->major;
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
@@ -602,6 +615,9 @@ stati(struct inode *ip, struct stat *st)
   st->type = ip->type;
   st->nlink = ip->nlink;
   st->size = ip->size;
+  st->mode = ip->mode;
+  st->uid = ip->uid;
+  st->gid = ip->gid;
 }
 
 // Read data from inode.
@@ -786,12 +802,55 @@ skipelem(char *path, char *name)
   return path;
 }
 
+// May a process with identity cred do `need` to ip?  ip must be locked.
+// acc is ACC_R, ACC_W, ACC_X, or several of them OR'ed together; the
+// result is nonzero when the access is allowed.
+//
+// Every requested bit must be granted.  Testing `(mode >> shift) & acc`
+// instead would let a 0400 file satisfy a read+write request, because
+// "one of the two bits is set" is not "the access I asked for".
+//
+// Two rules here are deliberate and easy to get wrong:
+//
+//   - There is no fallback from one class to the next.  If the uid
+//     matches, the owner bits decide and only they decide: an owner who
+//     cleared their own read bit is refused even though the `other`
+//     bits would have allowed it.  Falling through to a later class is
+//     a silent privilege escalation, not a convenience.
+//
+//   - uid 0 passes the read and the write bits, but not execute.  A
+//     file with no x bit in any class is not a program, and exec() is
+//     the only caller that asks for ACC_X, so this is the rule that
+//     keeps root from running a data file as code.  It applies to
+//     directories as well, on purpose: one rule instead of two.  A
+//     directory whose x bits are all clear is then unreachable for
+//     everyone, including root, and has to be chmod()ed from its
+//     parent -- which still works, since reaching the directory itself
+//     never requires entering it.
+int
+perm_ok(struct inode *ip, struct cred cred, int acc)
+{
+  uint shift;
+
+  if (cred.uid == 0)
+    return (acc & ACC_X) == 0 || (ip->mode & 0111) != 0;
+
+  if (cred.uid == ip->uid)
+    shift = 6;
+  else if (cred.gid == ip->gid)
+    shift = 3;
+  else
+    shift = 0;
+
+  return ((ip->mode >> shift) & acc) == acc;
+}
+
 // Look up and return the inode for a path name.
 // If parent != 0, return the inode for the parent and copy the final
 // path element into name, which must have room for DIRSIZ bytes.
 // Must be called inside a transaction since it calls iput().
 static struct inode *
-namex(char *path, int nameiparent, char *name)
+namex(char *path, int nameiparent, char *name, struct cred cred)
 {
   struct inode *ip, *next;
 
@@ -807,6 +866,15 @@ namex(char *path, int nameiparent, char *name)
       return 0;
     }
     if (ip->nlink == 0) {
+      iunlockput(ip);
+      return 0;
+    }
+    // To look up a name in a directory you must be able to
+    // reach it, which is search (x) on the directory itself.
+    // Without this a 0700 directory can still be walked
+    // through and the files in it read, so this is the check
+    // that is most costly to leave out.
+    if (!perm_ok(ip, cred, ACC_X)) {
       iunlockput(ip);
       return 0;
     }
@@ -830,14 +898,14 @@ namex(char *path, int nameiparent, char *name)
 }
 
 struct inode *
-namei(char *path)
+namei(char *path, struct cred cred)
 {
   char name[DIRSIZ];
-  return namex(path, 0, name);
+  return namex(path, 0, name, cred);
 }
 
 struct inode *
-nameiparent(char *path, char *name)
+nameiparent(char *path, char *name, struct cred cred)
 {
-  return namex(path, 1, name);
+  return namex(path, 1, name, cred);
 }

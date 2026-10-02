@@ -32,8 +32,12 @@ static struct entry cmds[] = {
 
   {"files & text", "cat", "[file ...]",
    "concatenate files and print; reads stdin if none", 0, 0},
-  {"files & text", "ls", "[path ...]",
-   "list directory contents", 0, 0},
+  {"files & text", "ls", "[-l] [path ...]",
+   "list directory contents",
+   "-l adds the mode, the link count and the owner of each entry.", 1},
+  {"files & text", "chmod", "mode file ...",
+   "change permission bits; mode is octal",
+   "Only the owner or uid 0 may.  The file type is not part of mode.", 1},
   {"files & text", "mkdir", "dir ...",
    "create directories", 0, 0},
   {"files & text", "rm", "path ...",
@@ -99,6 +103,11 @@ static struct entry cmds[] = {
   {"self-checks", "idtest", "",
    "check the identity rules for fork, exec, setuid and setgid",
    "Run as root; the child demotes itself and probes the rules.", 1},
+
+  {"self-checks", "permtest", "",
+   "check that the permission model refuses what it should",
+   "Run as root.  Makes fixtures in /permtest-dir, then probes them from "
+   "a child that has dropped to uid 1001.", 1},
 
   {"self-checks", "mixstress", "",
    "exercise concurrent fork, COW, pipes and files", 0, 1},
