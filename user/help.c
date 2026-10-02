@@ -57,6 +57,10 @@ static struct entry cmds[] = {
    // field even though it is written on two lines.
    "Also shows dcpu/busy% since the last refresh.  Runs continuously "
    "without arguments; top n exits after n refreshes.", 1},
+  {"processes", "id", "",
+   "print the current user and group id",
+   "Confirms that fork and exec keep the identity; uid 0 is the privileged one.",
+   1},
   {"processes", "kill", "pid",
    "ask a process to exit",
    "Only sets a flag that the target checks at its next syscall.", 0},
@@ -77,7 +81,7 @@ static struct entry cmds[] = {
 
   {"self-checks", "cputest", "[ticks]",
    "cross-check CPU accounting against uptime()",
-   "Defaults to 20 ticks per phase; allows sampling skew.", 1},
+   "Defaults to 20 ticks per phase; a shorter window is raised to 10.", 1},
   {"self-checks", "waitxtest", "[ticks]",
    "cross-check waitx() against the child's own psinfo()",
    "Defaults to 5 ticks.  The parent may see more, never less.", 1},
@@ -92,6 +96,9 @@ static struct entry cmds[] = {
    "check allocator accounting and look for page leaks",
    "Cross-checks the free-page and live-page counters; defaults to 3 rounds.",
    1},
+  {"self-checks", "idtest", "",
+   "check the identity rules for fork, exec, setuid and setgid",
+   "Run as root; the child demotes itself and probes the rules.", 1},
 
   {"self-checks", "mixstress", "",
    "exercise concurrent fork, COW, pipes and files", 0, 1},
