@@ -63,6 +63,7 @@ def test_login():
         for i in range(2):
             start = login(q, "alice", "wrong-password", False)
             began = time.monotonic()
+            q.cmd(b"\x03")  # SIG_IGN must not shorten pause-based backoff.
             expect(q, r"login: $", start)
             assert time.monotonic() - began >= (0.7 if i == 0 else 1.6), "missing backoff"
         login(q, "root", "root")

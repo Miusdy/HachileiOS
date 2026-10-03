@@ -2,6 +2,16 @@
 #include "user/user.h"
 #include "user/account.h"
 
+// pause() may return early on a signal even when its handler is SIG_IGN.
+// Retry the remaining interval so Ctrl-C cannot bypass authentication delay.
+static void
+delay(uint ticks)
+{
+  uint start = uptime(), elapsed;
+  while ((elapsed = (uint)uptime() - start) < ticks)
+    pause(ticks - elapsed);
+}
+
 int
 main(void)
 {
@@ -21,7 +31,7 @@ main(void)
   for (;;) {
     if (account_load(&db) < 0) {
       fprintf(2, "login: invalid account database\n");
-      pause(50);
+      delay(50);
       continue;
     }
     printf("login: ");
@@ -35,7 +45,7 @@ main(void)
     if (!valid || i < 0 || !auth_equal(hash, a->hash)) {
       failures = failures < 4 ? failures + 1 : 4;
       printf("Login incorrect\n");
-      pause(10 << (failures - 1)); // 1, 2, 4, then 8 seconds, bounded.
+      delay(10 << (failures - 1)); // 1, 2, 4, then 8 seconds, bounded.
       continue;
     }
     int uid = a->uid, gid = a->gid;

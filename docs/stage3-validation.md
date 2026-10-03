@@ -31,7 +31,7 @@ python3 test-stage3.py --cpus 3
 | UID/GID、特权身份、继承 | `idtest`：降权、禁止提权和切换其他身份、边界值、fork/exec 保留身份；真实登录分别得到 UID 1001/1002 |
 | 文件和目录权限 | `permtest`：owner/group/other 不回退、目录读/搜索/修改、执行位；实际 alice/bob 会话双向拒绝读取、写入，拒绝越权删除；重启后检查内容、UID 和 0600 权限 |
 | 进程与设备控制 | `privtest`：两不同 UID 同时存在，重复拒绝 kill/signal/killpg/setprio/setpgid/tcsetpgrp，验证同 UID 和 root 正向操作、混合组只投递有权限成员、普通用户 mknod/chown/ttyecho 拒绝 |
-| 账户与认证 | login 始终认证，密码不回显；错误口令、未知用户、超长口令、确认不一致拒绝；连续失败 1/2 秒退避；root 改密后旧口令拒绝，新口令重启后仍可用 |
+| 账户与认证 | login 始终认证，密码不回显；错误口令、未知用户、超长口令、确认不一致拒绝；连续失败 1/2 秒退避，Ctrl-C 不能缩短等待；root 改密后旧口令拒绝，新口令重启后仍可用 |
 | 密码存储 | 每账户独立 16 字节宿主随机盐；PBKDF2-HMAC-SHA256 10,000 轮；18 组密码/盐组合与 Python hashlib 完全一致，涵盖 55/56/63 字节边界；数据库 root:0600，普通用户不能读取或给它建立硬链接 |
 | 磁盘兼容性 | 实际将测试镜像 magic 改成旧值，启动明确拒绝；账户文件权限错误或截断损坏时拒绝登录，无 root Shell 回退；测试结束恢复镜像 |
 | 统计和日志边界 | UID/GID 随 psinfo 返回，统计公开、klog 仅 root；普通用户 ps 可用；实际填充超过 56 个进程，验证第二快照页、两种 copyout 失败及临时页回收 |
